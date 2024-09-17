@@ -1,0 +1,70 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(readxl)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+source("parse_utils.R")
+
+location = "lismore" # options are: perth, tennant, lismore
+
+population_data <- process_data_ABS()
+
+population_data %>%
+  filter(grepl("Lismore|Tennant|Perth", `SA2 name`, ignore.case = TRUE))
+```
+
+```{r}
+name_mapping <- c(
+  "lismore" = "Lismore",
+  "perth" = "Perth",
+  "tennant" = "Tennant Creek"
+)
+
+sa2_mapping <- list(
+  "lismore" = c(112021248, 112021249),
+  "perth" = c(503021040, 503021295, 503021296, 503021297),
+  "tennant" = c(702021056)
+)
+
+year_columns <- names(population_data)[grepl("^\\d{4}$", names(population_data))]
+
+population_data <- population_data %>%
+  mutate(across(all_of(year_columns), as.numeric))
+
+sum_population_per_year <- function(sa2_codes) {
+  population_data %>%
+    filter(`SA2 code` %in% sa2_codes) %>%
+    summarise(across(all_of(year_columns), sum, na.rm = TRUE)) %>%
+    pivot_longer(cols = all_of(year_columns), names_to = "year", values_to = "population")
+}
+
+all_population_data <- data.frame()
+
+for (location in names(sa2_mapping)) {
+  location_population <- sum_population_per_year(sa2_mapping[[location]]) %>%
+    mutate(location = name_mapping[location]) 
+  all_population_data <- bind_rows(all_population_data, location_population)
+} 
+
+```
+
+```{r}
+population_plot <- ggplot(all_population_data, aes(x = as.numeric(year), y = population, color = location, group = location)) +
+  geom_line(size = 1) +
+  geom_point() +
+  labs(title = "Population Over Time",
+       x = "Year", y = "Population") +
+  theme_minimal()
+
+population_plot
+```
+```{r}
+ggsave("population_plot.png", plot = population_plot, width = 10, height = 6)
+```
+

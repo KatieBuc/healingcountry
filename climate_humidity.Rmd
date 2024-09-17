@@ -1,0 +1,190 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(ggplot2)
+library(plotly)
+library(dplyr)
+library(lubridate)
+library(tidyr)
+
+source("plot_utils.R")
+source("parse_utils.R")
+
+location = "lismore" # options are: perth, tennant, lismore
+
+name_mapping <- c(
+  "lismore" = "Lismore",
+  "perth" = "Perth",
+  "tennant" = "Tennant Creek"
+)
+mapped_location <- name_mapping[location]
+data <- process_data_LP(location)
+data
+```
+```{r}
+# Aggregate the data by year
+aggregated_data <- data %>%
+  group_by(year) %>%
+  summarise(
+    RHminT = mean(RHminT, na.rm = TRUE),
+    RHmaxT = mean(RHmaxT, na.rm = TRUE)
+  )
+```
+
+
+```{r}
+# Pivot the data to long format for easier bar plotting
+long_data <- aggregated_data %>%
+  pivot_longer(cols = c(RHmaxT, RHminT), 
+               names_to = "Variable", 
+               values_to = "Value")
+
+# Create a grouped bar plot with RHmaxT and RHminT for each year
+p <- ggplot(long_data, aes(x = as.factor(year), y = Value, fill = Variable)) +
+  geom_bar(stat = "identity", position = position_dodge()) +  
+  labs(title = paste0(mapped_location, " - Average Daily Min/Max Humidity over the Years"),
+       x = "Year",
+       y = "Humidity (%)",
+       fill = "Variable") +
+  theme_minimal()
+
+# Make it interactive with plotly
+interactive_plot <- ggplotly(p)
+
+# Render the interactive plot in your R notebook
+interactive_plot
+
+```
+```{r}
+
+# Adjust RHminT to make it negative so that it mirrors on the left side
+#aggregated_data <- aggregated_data %>%
+#  mutate(RHmaxT = -RHmaxT)
+
+# Pivot the data to long format for easier plotting
+long_data <- aggregated_data %>%
+  pivot_longer(cols = c(RHmaxT, RHminT), 
+               names_to = "Variable", 
+               values_to = "Value")
+
+# Create a mirrored bar plot with year on the y-axis and RHminT and RHmaxT on different sides
+p <- ggplot(long_data, aes(x = Value, y = as.factor(year), fill = Variable)) +
+  geom_bar(data = subset(long_data, Variable == "RHminT"), stat = "identity", width = 0.8) +
+  geom_bar(data = subset(long_data, Variable == "RHmaxT"), stat = "identity", width = 0.8) +
+  #geom_bar(stat = "identity", width = 0.8, position = "identity") +   
+  scale_x_continuous(labels = abs) +          # Makes x-axis show absolute values
+  scale_y_discrete(breaks = function(x) x[seq(1, length(x), by = 5)]) + 
+  labs(title = paste0(mapped_location, " - Average Daily Min/Max Humidity over the Years"),
+       x = "Humidity (%)",
+       y = "Year",
+       fill = "Variable") +
+  theme_minimal()
+
+# Make it interactive with plotly
+interactive_plot <- ggplotly(p)
+
+# Render the interactive plot in your R notebook
+interactive_plot
+
+```
+
+
+
+```{r}
+library(gganimate)
+library(gifski)
+
+# Create the base plot
+p <- ggplot(long_data, aes(x = Value, y = as.factor(year), fill = Variable)) +
+  geom_bar(data = subset(long_data, Variable == "RHminT"), stat = "identity", width = 1) +
+  geom_bar(data = subset(long_data, Variable == "RHmaxT"), stat = "identity", width = 1) +
+  scale_x_continuous(labels = abs) +          # Makes x-axis show absolute values
+  scale_y_discrete(breaks = function(x) x[seq(1, length(x), by = 5)]) + 
+  labs(title = paste0(mapped_location, " - Average Daily Min/Max Humidity over the Years"),
+       x = "Humidity (%)",
+       y = "Year",
+       fill = "Variable") +
+  theme_minimal()
+
+p <- p + 
+  geom_point(data = subset(long_data, Variable == "RHminT"), 
+             aes(x = Value, y = as.factor(year)), 
+             color = "green", size = 2) 
+  
+# # Animate the plot to reveal bars over time
+# animated_plot <- p + 
+#   transition_states(year, transition_length = 2, state_length = 1) +  # Year-wise transition
+#   ease_aes('linear') +  # Smooth animation
+#   enter_fade() +        # Fade-in effect for the bars
+#   exit_fade()           # Fade-out effect for transition if necessary
+animated_plot <- p + 
+  transition_reveal(along = year) +  # Reveals data year by year
+  ease_aes('linear')  # Smooth linear animation
+
+# Set animation parameters (duration matches the length of the music, e.g., 30 seconds)
+animation <- animate(animated_plot, duration = 30, width = 800, height = 600, renderer = gifski_renderer())
+animation
+
+# Save the animated plot as a GIF
+anim_save(paste0(location, "_humidity_animation.gif"), animation = animation)
+```
+
+
+
+```{r}
+library(tuneR)
+
+scale_to_midi <- function(value, min_value, max_value) {
+  return(100 + round((value - max_value) / (max_value - min_value) * 10))  
+}
+
+aggregated_data$RHminT_midi <- scale_to_midi(aggregated_data$RHminT, min(aggregated_data$RHminT), max(aggregated_data$RHminT))
+
+combined_wave <- NULL
+
+total_duration <- 30
+num_notes <- nrow(aggregated_data)
+duration_per_note <- total_duration / num_notes
+
+for (i in 1:num_notes) {
+  freq_max <- 440 * 2 ^ ((aggregated_data$RHminT_midi[i] - 69) / 12)
+
+  wave_max <- sine(freq_max, duration = duration_per_note, xunit = "time", samp.rate = 44100, bit = 32)
+
+  if (is.null(combined_wave)) {
+    combined_wave <- wave_max
+  } else {
+    combined_wave <- bind(combined_wave, wave_max)
+  }
+}
+
+combined_wave <- normalize(combined_wave, unit = "32")
+writeWave(combined_wave, paste0(location, "_humidity_music_30sec.wav"))
+combined_wave
+
+```
+
+
+```{r}
+# Load necessary libraries
+library(seewave)
+
+# Assuming combined_wave has already been created
+
+# Plot the waveform
+oscillo(combined_wave, f = combined_wave@samp.rate)  # f = 44100 Hz by default for CD-quality audio
+
+# Plot the spectrogram
+spectro(combined_wave, f = combined_wave@samp.rate)
+
+```
+######################################################################
+finally, use the following websites to convert .wav to .mp3, and then overlay the mp3 to the gif:
+
+https://www.freeconvert.com/wav-to-mp3/
+https://online-video-cutter.com/
+
+
