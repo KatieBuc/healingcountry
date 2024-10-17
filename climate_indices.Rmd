@@ -1,0 +1,158 @@
+
+```{r}
+library(ggplot2)
+library(gganimate)
+library(dplyr)
+
+source("plot_utils.R")
+source("parse_utils.R")
+
+location = "lismore" # options are: perth, tennant, lismore
+
+name_mapping <- c(
+  "lismore" = "Lismore",
+  "perth" = "Perth",
+  "tennant" = "Tennant Creek"
+)
+mapped_location <- name_mapping[location]
+```
+
+
+```{r}
+data <- process_data_LP(location)
+data
+```
+
+
+```{r}
+### Formatting -> Climate:
+library(dplyr)
+library(viridis)
+library(tidyverse)
+library(data.table)
+
+# from D_Temp.R
+dailyAvgT <- cbind(dailyMinT[,1], (dailyMinT[,c(2:7672)]+dailyMaxT[,c(2:7672)])/2)
+names(dailyAvgT) <- gsub(x = names(dailyAvgT), pattern = "min", replacement = "avg")
+
+
+# from D_EHF.R
+
+#### Excess Heat Factor (Functions):
+
+# Excess Heat Index, or Significance Index, EHI_accl:
+EHFsigCalc <- function(dummy){
+  dailyAvgT <- dummy
+  quantFun <- function(x) quantile(x, c(0.95), na.rm=TRUE)
+  percVec <- apply(dailyAvgT[,c(2:ncol(dailyAvgT))], 1, quantFun)
+  for (i in 4:ncol(dailyAvgT)){
+    colEHIsig <- (rowMeans(dailyAvgT[,c(i:(i-2))], na.rm=TRUE))-percVec
+    dummy[,i] <- colEHIsig
+  }; dummy[,c(2:3)] <- NA
+  return(dummy)
+}
+
+# Heat Stress Index, or Acclimatisation Index, EHI_accl:
+EHFacclCalc <- function(dummy){
+  dailyAvgT <- dummy
+  for (i in 34:ncol(dailyAvgT)){
+    colEHIaccl <- (rowMeans(dailyAvgT[,c(i:(i-2))], na.rm=TRUE))-(rowMeans(dailyAvgT[,c((i-3):(i-32))], na.rm=TRUE))
+    dummy[,i] <- colEHIaccl
+  }; dummy[,c(2:33)] <- NA
+  return(dummy)
+}
+
+# Excess Heat Factor, EHF:
+EHFCalc <- function(dummy, sig, accl){
+  compA <- sig; compA[compA<=0] <- 0
+  compB <- accl; compB[compB<=1] <- 1
+  EHF <- dummy; EHF[,c(2:ncol(EHF))] <- compA[,c(2:ncol(compA))] * compB[,c(2:ncol(compB))]
+  return(EHF)
+}
+
+#### Excess Cold Factor (Functions):
+
+# Excess Cold Index, or Significance Index, ECIsig:
+ECFsigCalc <- function(dummy){
+  dailyAvgT <- dummy
+  quantFun <- function(x) quantile(x, c(0.05), na.rm=TRUE)
+  percVec <- apply(dailyAvgT[,c(2:ncol(dailyAvgT))], 1, quantFun)
+  for (i in 4:ncol(dailyAvgT)){
+    colECIsig <- (rowMeans(dailyAvgT[,c(i:(i-2))], na.rm=TRUE))-percVec
+    dummy[,i] <- colECIsig
+  }; dummy[,c(2:3)] <- NA
+  return(dummy) 
+}
+
+# Cold Stress Index, or Acclimatisation Index, ECI_accl:
+ECFacclCalc <- function(dummy){
+  dailyAvgT <- dummy
+  for (i in 34:ncol(dailyAvgT)){
+    colECIaccl <- (rowMeans(dailyAvgT[,c(i:(i-2))], na.rm=TRUE))-(rowMeans(dailyAvgT[,c((i-3):(i-32))], na.rm=TRUE))
+    dummy[,i] <- colECIaccl
+  }; dummy[,c(2:33)] <- NA
+  return(dummy)
+}
+
+# Excess Cold Factor, ECF:
+ECFCalc <- function(dummy, sig, accl){
+  compA <- sig; compA[compA>=0] <- 0
+  compB <- accl; compB[compB>=-1] <- -1
+  ECF <- dummy; ECF[,c(2:ncol(ECF))] <- compA[,c(2:ncol(compA))] * compB[,c(2:ncol(compB))]
+  return(ECF)
+}
+```
+
+
+```{r}
+# Processing -> Climate -> Climate_Processing.R
+
+# [2.] Counts of Historical Percentiles (>0.85 and >0.95):
+dDataRH <- rankHistorical(data1)
+dDataRHI1 <- dDataRH; dDataRHI1[dDataRHI1<0.85] <- 2; dDataRHI1[dDataRHI1<=1] <- 3; dDataRHI1 <- dDataRHI1 - 2
+dDataRHI2 <- dDataRH; dDataRHI2[dDataRHI2<0.95] <- 2; dDataRHI2[dDataRHI2<=1] <- 3; dDataRHI2 <- dDataRHI2 - 2
+
+TempHar <- agg(dDataRHI1, "SUM")        # Number of "at risk" temp days.
+TempHhr <- agg(dDataRHI2, "SUM")        # Number of "high risk" temp days.
+
+
+
+# [4.] EHF, Number of Heatwaves (Regular, Severe):
+EHFhw <- data2
+EHFhw[EHFhw>0] <- 1
+aEHFhw <- agg(EHFhw, "SUM")             # Number of heatwave days.
+if (resT == "w") aEHFhw[,1:4] <- NA else if (resT == "m") aEHFhw[,1] <- NA
+EHFprep <- data2; EHFprep[EHFprep == 0] <- NA
+EHFRH <- rankHistorical(EHFprep)
+EHFshw <- EHFRH
+EHFshw[EHFshw<=0.85] <- 0; EHFshw[EHFshw>0.85] <- 1
+aEHFshw <- agg(EHFshw, "SUM")           # Number of severe heatwave days.
+if (resT == "w") aEHFshw[,1:4] <- NA else if (resT == "m") aEHFshw[,1] <- NA
+
+
+# [7.] Counts of Historical Percentiles (>0.85 and >0.95):
+dDataRHc <- 1 - dDataRH
+dDataRHI1c <- dDataRHc; dDataRHI1c[dDataRHI1c<0.85] <- 2; dDataRHI1c[dDataRHI1c<=1] <- 3; dDataRHI1c <- dDataRHI1c - 2
+dDataRHI2c <- dDataRHc; dDataRHI2c[dDataRHI2c<0.95] <- 2; dDataRHI2c[dDataRHI2c<=1] <- 3; dDataRHI2c <- dDataRHI2c - 2
+
+TempCar <- agg(dDataRHI1c, "SUM")       # Number of "at risk" temp days.
+TempChr <- agg(dDataRHI2c, "SUM")       # Number of "high risk" temp days.
+
+
+# [9.] ECF, Number of Cold waves (Regular, Severe):
+ECFcw <- data3
+ECFcw[ECFcw>0] <- 1
+aECFcw <- agg(ECFcw, "SUM")             # Number of coldwave days.
+if (resT == "w") aECFcw[,1:4] <- NA else if (resT == "m") aECFcw[,1] <- NA
+ECFprep <- data3; ECFprep[ECFprep == 0] <- NA
+ECFRH <- rankHistorical(ECFprep)
+ECFscw <- ECFRH
+ECFscw[ECFscw<=0.85] <- 0; ECFscw[ECFscw>0.85] <- 1
+aECFscw <- agg(ECFscw, "SUM")           # Number of severe coldwave days.
+if (resT == "w") aECFscw[,1:4] <- NA else if (resT == "m") aECFscw[,1] <- NA
+
+```
+
+
+
+

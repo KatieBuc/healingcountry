@@ -1,0 +1,99 @@
+
+```{r}
+library(ggplot2)
+library(gganimate)
+library(dplyr)
+library(ggpattern)
+
+location = "tennant" # options are: perth, tennant, lismore
+
+name_mapping <- c(
+  "lismore" = "Lismore",
+  "perth" = "Perth",
+  "tennant" = "Tennant Creek"
+)
+mapped_location <- name_mapping[location]
+```
+```{r}
+data <- process_data_LP(location)
+
+df <- data %>%
+    mutate(month = format(Date, "%Y-%m")) %>%  
+    group_by(month) %>%
+    summarise(
+      T.Max = max(T.Max, na.rm = TRUE),
+      T.Min = max(T.Min, na.rm = TRUE),
+      Rain = sum(Rain, na.rm = TRUE),
+      Evap = max(Evap, na.rm = TRUE),
+      Radn = max(Radn, na.rm = TRUE),
+      VP = max(VP, na.rm = TRUE),
+      RHmaxT = max(RHmaxT, na.rm = TRUE),
+      RHminT = max(RHminT, na.rm = TRUE)
+    )
+
+df <- df %>%
+  mutate(month = as.Date(paste0(month, "-01"), format = "%Y-%m-%d"))
+
+df
+```
+
+```{r}
+ggplot(df, aes(x = as.Date(month), y = T.Max)) +
+  geom_bar(stat = "identity", aes(fill = T.Max), alpha = 1) +  
+  scale_fill_gradientn(colors = c("blue", "red")) + 
+  labs(title = paste(mapped_location, "- Maximum Temperatures"),
+       x = "Date",
+       y = "T.Max (°C)") +
+  theme_minimal() +
+  theme(legend.position = "right")
+ 
+```
+
+
+
+```{r}
+ggplot(df, aes(x = as.Date(month), y = T.Max)) +
+  geom_area_pattern(aes(pattern_fill = T.Max), 
+                    alpha = 0.6, 
+                    pattern = "gradient",
+                    pattern_fill = "blue",
+                    pattern_fill2 = "red",  
+                    pattern_density = 0.6,
+                    stat = "identity") + 
+  theme_minimal() +
+  labs(title = paste(mapped_location, "- Maximum Temperatures"),
+       x = "Date",
+       y = "T.Max (°C)")
+```
+
+
+
+```{r}
+p <- ggplot(df, aes(x = as.Date(month), y = T.Max)) +
+  geom_area_pattern(aes(pattern_fill = T.Max), 
+                    alpha = 0.6, 
+                    pattern = "gradient",
+                    pattern_fill = "blue",
+                    pattern_fill2 = "red",  
+                    pattern_density = 0.6,
+                    stat = "identity") + 
+  labs(title = paste(mapped_location, "- Maximum Temperatures"),
+       x = "Date",
+       y = "T.Max (°C)") +
+  theme_minimal() +
+  theme(legend.position = "right") +
+  transition_reveal(along = as.numeric(as.Date(month))) + 
+  ease_aes('linear')
+
+# Render the animation
+nframes=length(unique(df$month))
+anim <- animate(p, nframes = 135, fps = 12, width = 1200, height = 600)
+```
+
+
+```{r}
+anim_save(paste0("climate_temp_linear_",location,".gif"), animation = anim)
+```
+
+
+
