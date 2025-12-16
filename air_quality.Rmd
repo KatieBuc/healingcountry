@@ -43,7 +43,7 @@ for (var in unique(df$variable)) {
   print(p_interactive)
   file_name <- paste0("air_quality_", var, ".html")
   saveWidget(p_interactive, file_name)
-  !include file_name
+  #Raw.githack.com 
 }
 
 ```
