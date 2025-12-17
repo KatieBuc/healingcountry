@@ -30,6 +30,8 @@ library(dplyr)
 library(viridis)
 library(tidyverse)
 library(data.table)
+library(daymetr)
+library(rank)
 
 # from D_Temp.R
 dailyAvgT <- cbind(dailyMinT[,1], (dailyMinT[,c(2:7672)]+dailyMaxT[,c(2:7672)])/2)
