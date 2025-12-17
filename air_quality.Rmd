@@ -47,15 +47,7 @@ for (var in unique(df$variable)) {
 }
 
 ```
-
-
-
-
-
-
-
-
-
+# Use https://raw.githack.com/ website to see and download the plot
 
 ```{r}
 
